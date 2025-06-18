@@ -106,3 +106,5 @@ ALTER TABLE users ADD COLUMN sort_order INTEGER DEFAULT 0;
 
 -- Set initial values (existing records ke liye)
 UPDATE users SET sort_order = id;
+
+UPDATE users SET sort_order = id WHERE sort_order IS NULL OR sort_order = 0;

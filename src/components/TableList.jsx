@@ -451,46 +451,86 @@ export default function TableList() {
     setActiveRow(event.active.id);
   }, []);
 
-  const handleDragEnd = useCallback(
-    async (event) => {
-      const { active, over } = event;
-      setActiveRow(null);
+  // Update handleDragEnd function
+const handleDragEnd = useCallback(
+  async (event) => {
+    const { active, over } = event;
+    setActiveRow(null);
 
-      if (active && over && active.id !== over.id) {
-        const oldIndex = users.findIndex((user) => user.id === active.id);
-        const newIndex = users.findIndex((user) => user.id === over.id);
+    if (active && over && active.id !== over.id) {
+      const oldIndex = users.findIndex((user) => user.id === active.id);
+      const newIndex = users.findIndex((user) => user.id === over.id);
 
-        if (oldIndex !== -1 && newIndex !== -1) {
-          // Update local state first for immediate UI feedback
-          const newUsers = arrayMove(users, oldIndex, newIndex);
-          setUsers(newUsers);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        // Optimistic update
+        const newUsers = arrayMove(users, oldIndex, newIndex);
+        setUsers(newUsers);
 
-          try {
-            // Send update to server
-            const reordered = newUsers.map((user, index) => ({
-              id: user.id,
-              order: index,
-            }));
+        try {
+          // Send only the moved item's new position
+          const response = await fetch("/api/dashboard/customers/reorder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: active.id,
+              newOrder: newIndex
+            }),
+          });
 
-            const response = await fetch("/api/dashboard/customers/reorder", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(reordered),
-            });
-
-            if (!response.ok) {
-              throw new Error("Failed to update order");
-            }
-          } catch (error) {
-            console.error("Reorder error:", error);
-            // Revert if API call fails
-            setUsers([...users]);
+          if (!response.ok) {
+            throw new Error("Failed to update order");
           }
+        } catch (error) {
+          console.error("Reorder error:", error);
+          // Revert if API call fails
+          setUsers([...users]);
         }
       }
-    },
-    [users, setUsers]
-  );
+    }
+  },
+  [users, setUsers]
+);
+
+//   const handleDragEnd = useCallback(
+//     async (event) => {
+//       const { active, over } = event;
+//       setActiveRow(null);
+
+//       if (active && over && active.id !== over.id) {
+//         const oldIndex = users.findIndex((user) => user.id === active.id);
+//         const newIndex = users.findIndex((user) => user.id === over.id);
+
+//         if (oldIndex !== -1 && newIndex !== -1) {
+//           // Update local state first for immediate UI feedback
+//           const newUsers = arrayMove(users, oldIndex, newIndex);
+//           setUsers(newUsers);
+
+//           try {
+//             // Send update to server
+//             const reordered = newUsers.map((user, index) => ({
+//               id: user.id,
+//               order: index,
+//             }));
+
+//             const response = await fetch("/api/dashboard/customers/reorder", {
+//               method: "POST",
+//               headers: { "Content-Type": "application/json" },
+//               body: JSON.stringify(reordered),
+//             });
+
+//             if (!response.ok) {
+//               throw new Error("Failed to update order");
+//             }
+//           } catch (error) {
+//             console.error("Reorder error:", error);
+//             // Revert if API call fails
+//             setUsers([...users]);
+//           }
+//         }
+//       }
+//     },
+//     [users, setUsers]
+//   );
 
   // Export functions
   const handleExport = (type) => {
