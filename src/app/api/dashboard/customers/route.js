@@ -140,68 +140,135 @@ export async function POST(req) {
   }
 }
 
-// Pagination & Search
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
 
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "5");
+  // Parse and validate pagination parameters
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "5")));
   const offset = (page - 1) * limit;
 
-  const search = searchParams.get("search") || "";
-  const sortBy = searchParams.get("sortBy") || 'sort_order';
-  const sortOrder = searchParams.get("sortOrder") || "asc";
+  // Search term - trim and escape special characters
+  const search = (searchParams.get("search") || "").trim();
+  const searchTerm = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
 
-  // Validate allowed sort columns
-  const validSorts = [
-    "id",
-    "first_name",
-    "last_name",
-    "email",
-    "company",
-    "created_at",
-    "sort_order"
-  ];
-  const orderBy = validSorts.includes(sortBy) ? sortBy : "sort_order"; 
-  const orderDirection = sortOrder === "desc" ? "DESC" : "ASC";
+  // Sorting parameters with validation
+  const validSorts = ["id", "first_name", "last_name", "email", "company", "created_at", "sort_order"];
+  const sortBy = validSorts.includes(searchParams.get("sortBy")) 
+    ? searchParams.get("sortBy") 
+    : "sort_order";
+  const orderDirection = searchParams.get("sortOrder") === "desc" ? "DESC" : "ASC";
 
   try {
-    const queryText = `
-      SELECT *,sort_order FROM users
+    // Base query for both data and count
+    const baseQuery = `
+      FROM customers
       WHERE 
-        first_name ILIKE $1 OR 
-        last_name ILIKE $1 OR 
-        email ILIKE $1 OR 
-        company ILIKE $1
-      ORDER BY ${orderBy} ${orderDirection}
+        ($1 = '' OR 
+         first_name ILIKE $1 OR 
+         last_name ILIKE $1 OR 
+         email ILIKE $1 OR 
+         company ILIKE $1)
+    `;
+
+    // Get paginated results
+    const dataQuery = `
+      SELECT *, sort_order 
+      ${baseQuery}
+      ORDER BY ${sortBy} ${orderDirection}
       LIMIT $2 OFFSET $3
     `;
-    const values = [`%${search}%`, limit, offset];
-    const result = await pool.query(queryText, values);
 
-    const countResult = await pool.query(
-      `
-      SELECT COUNT(*) FROM users
-      WHERE 
-        first_name ILIKE $1 OR 
-        last_name ILIKE $1 OR 
-        email ILIKE $1 OR 
-        company ILIKE $1
-    `,
-      [`%${search}%`]
-    );
+    // Get total count
+    const countQuery = `SELECT COUNT(*) ${baseQuery}`;
+
+    // Execute both queries in parallel
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(dataQuery, [searchTerm, limit, offset]),
+      pool.query(countQuery, [searchTerm])
+    ]);
 
     const totalCount = parseInt(countResult.rows[0].count);
 
     return Response.json({
-      users: result.rows,
+      users: dataResult.rows,
       totalCount,
+      page,
+      limit,
+      hasMore: (page * limit) < totalCount
     });
   } catch (err) {
     console.error("DB error:", err);
-    return new Response("Internal Server Error", { status: 500 });
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
+
+// Pagination & Search
+// export async function GET(req) {
+//   const { searchParams } = new URL(req.url);
+
+//   const page = parseInt(searchParams.get("page") || "1");
+//   const limit = parseInt(searchParams.get("limit") || "5");
+//   const offset = (page - 1) * limit;
+
+//   const search = searchParams.get("search") || "";
+//   const sortBy = searchParams.get("sortBy") || 'sort_order';
+//   const sortOrder = searchParams.get("sortOrder") || "asc";
+
+//   // Validate allowed sort columns
+//   const validSorts = [
+//     "id",
+//     "first_name",
+//     "last_name",
+//     "email",
+//     "company",
+//     "created_at",
+//     "sort_order"
+//   ];
+//   const orderBy = validSorts.includes(sortBy) ? sortBy : "sort_order"; 
+//   const orderDirection = sortOrder === "desc" ? "DESC" : "ASC";
+
+//   try {
+//     const queryText = `
+//       SELECT *,sort_order FROM users
+//       WHERE 
+//         first_name ILIKE $1 OR 
+//         last_name ILIKE $1 OR 
+//         email ILIKE $1 OR 
+//         company ILIKE $1
+//       ORDER BY ${orderBy} ${orderDirection}
+//       LIMIT $2 OFFSET $3
+//     `;
+//     const values = [`%${search}%`, limit, offset];
+//     const result = await pool.query(queryText, values);
+
+//     const countResult = await pool.query(
+//       `
+//       SELECT COUNT(*) FROM users
+//       WHERE 
+//         first_name ILIKE $1 OR 
+//         last_name ILIKE $1 OR 
+//         email ILIKE $1 OR 
+//         company ILIKE $1
+//     `,
+//       [`%${search}%`]
+//     );
+
+//     const totalCount = parseInt(countResult.rows[0].count);
+
+//     return Response.json({
+//       users: result.rows,
+//       totalCount,
+//     });
+//   } catch (err) {
+//     console.error("DB error:", err);
+//     return new Response("Internal Server Error", { status: 500 });
+//   }
+// }
 
 // export async function GET(request) {
 //   try {

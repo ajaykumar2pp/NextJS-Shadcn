@@ -14,6 +14,7 @@ import {
   ArrowUpWideNarrow,
   SquarePen,
   GripVertical,
+  EllipsisVertical,
 } from "lucide-react";
 
 import {
@@ -76,6 +77,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,7 +94,7 @@ function useFetchCustomers({ pageIndex, pageSize, debouncedSearch, sorting }) {
     const fetchData = async () => {
       setLoading(true);
 
-      // Cancel any previous request
+      // Cancel any previous request id it exists
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -101,12 +103,8 @@ function useFetchCustomers({ pageIndex, pageSize, debouncedSearch, sorting }) {
       abortControllerRef.current = controller;
 
       try {
-        const sortBy = sorting.length
-          ? sorting.map((s) => s.id).join(",")
-          : "sort_order";
-        const sortOrder = sorting.length
-          ? sorting.map((s) => (s.desc ? "desc" : "asc")).join(",")
-          : "asc";
+        const sortBy = sorting.length ? sorting[0].id : "sort_order";
+        const sortOrder = sorting.length ? (sorting[0].desc ? "desc" : "asc") : "asc";
 
         const params = new URLSearchParams({
           page: String(pageIndex + 1),
@@ -127,6 +125,7 @@ function useFetchCustomers({ pageIndex, pageSize, debouncedSearch, sorting }) {
         if (!res.ok) throw new Error("Failed to fetch users");
 
         const data = await res.json();
+        console.log("API Response:", data);
         setUsers(data.users || []);
         setTotalCount(data.totalCount || 0);
       } catch (err) {
@@ -151,7 +150,7 @@ function useFetchCustomers({ pageIndex, pageSize, debouncedSearch, sorting }) {
     sorting.map((s) => `${s.id}:${s.desc ? "desc" : "asc"}`).join("|"),
   ]);
 
-  return { users, totalCount, loading };
+  return { users, totalCount, loading, setUsers };
 }
 
 function DraggableTableRow({ row }) {
@@ -166,15 +165,20 @@ function DraggableTableRow({ row }) {
     id: row.original.id,
   });
 
-const style = {
-  ...(transform && { transform: CSS.Transform.toString(transform) }),
-  transition,
-  opacity: isDragging ? 0.8 : 1,
-  zIndex: isDragging ? 1 : 0,
-  position: "relative",
-  backgroundColor: isDragging ? "var(--background)" : undefined,
-};
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
+  // const style = {
+  //   ...(transform && { transform: CSS.Transform.toString(transform) }),
+  //   transition,
+  //   opacity: isDragging ? 0.8 : 1,
+  //   zIndex: isDragging ? 1 : 0,
+  //   position: "relative",
+  //   backgroundColor: isDragging ? "var(--background)" : undefined,
+  // };
 
   return (
     <TableRow
@@ -222,10 +226,9 @@ export default function TableList() {
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [sorting, setSorting] = useState([]);
   const [activeRow, setActiveRow] = useState(null);
-  // const [users, setUsers] = useState([]);
   const [debouncedSearch] = useDebounce(globalFilter, 500);
 
-  const { users, totalCount, loading } = useFetchCustomers({
+  const { users, totalCount, loading, setUsers } = useFetchCustomers({
     pageIndex,
     pageSize,
     debouncedSearch,
@@ -357,15 +360,35 @@ export default function TableList() {
         header: "ACTIONS",
         enableSorting: false,
         cell: ({ row }) => (
-          <button
-            onClick={() =>
-              router.push(`/dashboard/customers/edit/${row.original.id}`)
-            }
-            className="text-blue-500 hover:text-blue-700"
-            aria-label={`Edit customer ${row.original.id}`}
-          >
-            <SquarePen size={18} />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="data-[state=open]:bg-muted text-muted-foreground flex size-8 cursor-pointer"
+                size="icon"
+              >
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-32">
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(
+                    `/dashboard/customers/edit/${row.original.user_id}`
+                  )
+                }
+                aria-label={`Edit customer ${row.original.user_id}`}
+              >
+                Edit
+              </DropdownMenuItem>
+              {/* <DropdownMenuItem>Make a copy</DropdownMenuItem>
+              <DropdownMenuItem>Favorite</DropdownMenuItem> */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-red-500">
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ),
       },
     ],
@@ -416,12 +439,43 @@ export default function TableList() {
     return <ChevronsUpDown size={16} />;
   };
 
- 
+  //  pagination with ellipsis
+  const paginationItems = useMemo(() => {
+    const totalPages = Math.ceil(totalCount / pageSize);
+    if (totalPages <= 1) return [];
+
+    const current = pageIndex + 1;
+    const pages = [];
+
+    const showLeftEllipsis = current > 3;
+    const showRightEllipsis = current < totalPages - 2;
+    const startPage = Math.max(1, current - 1);
+    const endPage = Math.min(totalPages, current + 1);
+
+    if (!showLeftEllipsis) {
+      for (let i = 1; i <= Math.min(5, totalPages); i++) {
+        pages.push(i);
+      }
+    } else if (!showRightEllipsis) {
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        if (i > 0) pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      pages.push("left-ellipsis");
+      for (let i = startPage; i <= endPage; i++) pages.push(i);
+      pages.push("right-ellipsis");
+      pages.push(totalPages);
+    }
+    return pages;
+  }, [pageIndex, totalCount, pageSize]);
+
   // Handle row reordering
   const handleDragStart = useCallback((event) => {
     setActiveRow(event.active.id);
   }, []);
 
+  // Update handleDragEnd function
   const handleDragEnd = useCallback(
     async (event) => {
       const { active, over } = event;
@@ -432,27 +486,34 @@ export default function TableList() {
         const newIndex = users.findIndex((user) => user.id === over.id);
 
         if (oldIndex !== -1 && newIndex !== -1) {
+          // Optimistic update
           const newUsers = arrayMove(users, oldIndex, newIndex);
-
-          // ✅ FIXED: use state to update the UI
           setUsers(newUsers);
 
-          const reordered = newUsers.map((user, index) => ({
-            id: user.id,
-            order: index,
-          }));
+          try {
+            // Send only the moved item's new position
+            const response = await fetch("/api/dashboard/customers/reorder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: active.id,
+                newOrder: newIndex,
+              }),
+            });
 
-          await fetch("/api/dashboard/customers/reorder", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(reordered),
-          });
+            if (!response.ok) {
+              throw new Error("Failed to update order");
+            }
+          } catch (error) {
+            console.error("Reorder error:", error);
+            // Revert if API call fails
+            setUsers([...users]);
+          }
         }
       }
     },
-    [users]
+    [users, setUsers]
   );
-
 
   // Export functions
   const handleExport = (type) => {
@@ -461,7 +522,72 @@ export default function TableList() {
 
   return (
     <div className="container mx-auto mt-6 px-4">
-     
+      {/* Search & Column Menu */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
+        {/* Search Input */}
+        <input
+          type="text"
+          placeholder="Search customers..."
+          className="w-full md:w-1/3 rounded-md border border-gray-300 px-4 py-2 text-sm"
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          style={{ cursor: "text" }}
+        />
+        {loading && <span className="text-sm text-muted-foreground">Searching...</span>}
+
+        {/* Column toggle & export */}
+        <div className="flex items-center gap-2">
+          {/* Column toggle */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <span className="hidden lg:inline">Customize Columns</span>
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {table
+                .getAllColumns()
+                .filter(
+                  (col) =>
+                    col.getCanHide() && col.id !== "drag" && col.id !== "select"
+                )
+                .map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={col.getIsVisible()}
+                    onCheckedChange={(checked) => col.toggleVisibility(checked)}
+                  >
+                    {col.id}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Export menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Ellipsis className="hidden lg:inline" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" sideOffset={4}>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => handleExport("json")}>
+                  <Download className="mr-2 h-4 w-4" /> Export all to .json
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("csv")}>
+                  <Download className="mr-2 h-4 w-4" /> Export all to .csv
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+                  <Download className="mr-2 h-4 w-4" /> Export all to .xlsx
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
       {/* Data Table with Drag & Drop */}
       <div className="overflow-x-auto rounded-lg border">
         <DndContext
@@ -586,105 +712,109 @@ export default function TableList() {
         </DndContext>
       </div>
 
-     
+      {/* Pagination */}
+      <div className="flex items-center justify-between px-4 mt-6">
+        {/* Show filtered count */}
+        <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
+          {table.getFilteredSelectedRowModel().rows.length} of{" "}
+          {table.getFilteredRowModel().rows.length} row(s) selected.
+        </div>
+        {/* Pagination controls */}
+        <div className="flex w-full items-center gap-8 lg:w-fit">
+          {/* Rows per page */}
+          <div className="flex w-full items-center gap-2 lg:w-fit">
+            <Label htmlFor="rows-per-page" className="text-sm font-medium">
+              Rows per page
+            </Label>
+            <Select
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                const newSize = Number(value);
+                setPageSize(newSize);
+                updateUrlParams("pageSize", newSize);
+              }}
+            >
+              <SelectTrigger size="sm" className="w-20" id="rows-per-page">
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {[5, 10, 20, 30, 40, 50].map((size) => (
+                  <SelectItem key={size} value={`${size}`}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Pager Per Count */}
+          <div className="flex w-fit items-center justify-center text-sm font-medium">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+          </div>
+
+          {/* Pagination buttons */}
+          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => {
+                      if (pageIndex > 0) {
+                        const newPage = pageIndex - 1;
+                        setPageIndex(newPage);
+                        updateUrlParams("page", newPage + 1);
+                      }
+                    }}
+                    className={
+                      pageIndex > 0 ? "" : "pointer-events-none opacity-50"
+                    }
+                    href="#"
+                  />
+                </PaginationItem>
+
+                {paginationItems.map((page, index) =>
+                  page === "left-ellipsis" || page === "right-ellipsis" ? (
+                    <PaginationItem key={index}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={index}>
+                      <PaginationLink
+                        href="#"
+                        isActive={page === pageIndex + 1}
+                        onClick={() => {
+                          setPageIndex(page - 1);
+                          updateUrlParams("page", page.toString());
+                        }}
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
+
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => {
+                      if (pageIndex + 1 < Math.ceil(totalCount / pageSize)) {
+                        const newPage = pageIndex + 1;
+                        setPageIndex(newPage);
+                        updateUrlParams("page", newPage + 1);
+                      }
+                    }}
+                    className={
+                      pageIndex + 1 < Math.ceil(totalCount / pageSize)
+                        ? ""
+                        : "pointer-events-none opacity-50"
+                    }
+                    href="#"
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
-import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
-
-export async function POST(req) {
-  // Validate request method
-  if (req.method !== 'POST') {
-    return NextResponse.json(
-      { success: false, message: 'Method not allowed' },
-      { status: 405 }
-    );
-  }
-
-  let client;
-  try {
-    // Parse and validate request body
-    const requestBody = await req.json();
-    
-    if (!requestBody || typeof requestBody !== 'object') {
-      return NextResponse.json(
-        { success: false, message: 'Invalid request body' },
-        { status: 400 }
-      );
-    }
-
-    const { id, newOrder } = requestBody;
-    
-    // Validate required fields
-    if (!id || typeof id !== 'string') {
-      return NextResponse.json(
-        { success: false, message: 'Invalid or missing customer ID' },
-        { status: 400 }
-      );
-    }
-    
-    if (newOrder === undefined || typeof newOrder !== 'number' || newOrder < 0) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid new order position' },
-        { status: 400 }
-      );
-    }
-
-    // Get database connection
-    client = await pool.connect();
-
-    // Verify customer exists before updating
-    const checkResult = await client.query(
-      'SELECT id FROM customers WHERE id = $1',
-      [id]
-    );
-    
-    if (checkResult.rowCount === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Customer not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update sort order
-    const updateResult = await client.query(
-      'UPDATE customers SET sort_order = $1 WHERE id = $2 RETURNING id, sort_order',
-      [newOrder, id]
-    );
-
-    // Successful response
-    return NextResponse.json({
-      success: true,
-      message: 'Order updated successfully',
-      data: {
-        id: updateResult.rows[0].id,
-        newOrder: updateResult.rows[0].sort_order
-      }
-    });
-
-  } catch (err) {
-    console.error("Database error:", err);
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to update order',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      },
-      { status: 500 }
-    );
-  } finally {
-    // Release client back to pool
-    if (client) {
-      client.release();
-    }
-  }
-}
-
-
--- Add sort_order column with default values
-ALTER TABLE users ADD COLUMN sort_order INTEGER DEFAULT 0;
-
--- Set initial values (existing records ke liye)
-UPDATE users SET sort_order = id;

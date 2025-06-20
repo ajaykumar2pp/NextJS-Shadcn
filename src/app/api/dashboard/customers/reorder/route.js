@@ -16,7 +16,7 @@ export async function POST(req) {
 
     const client = await pool.connect();
     await client.query(
-      'UPDATE users SET sort_order = $1 WHERE id = $2',
+      'UPDATE customers SET sort_order = $1 WHERE id = $2',
       [newOrder, id]
     );
     client.release();

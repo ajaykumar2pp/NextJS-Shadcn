@@ -4,7 +4,8 @@ export const metadata = {
 };
 
 import CustomerList from "@/components/CustomerList";
-import TableList from "@/components/TableList";
+// import TableList from "@/components/TableList";
+import TableList from "@/components/Data";
 import Link from "next/link";
 import React from "react";
 
@@ -23,6 +24,7 @@ const GetCustomers = () => {
       <div>
         {/* <CustomerList /> */}
         <TableList />
+        
       </div>
     </div>
   );
